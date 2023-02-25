@@ -6,6 +6,7 @@ use crate::job::Job;
 use super::*;
 
 use helix_core::encoding;
+use helix_core::security;
 use helix_view::document::DEFAULT_LANGUAGE_NAME;
 use helix_view::editor::{Action, CloseError, ConfigEvent};
 use serde_json::Value;
@@ -1387,6 +1388,96 @@ fn tree_sitter_scopes(
     Ok(())
 }
 
+impl ui::menu::Item for security::WorkspaceCommand {
+    type Data = ();
+    fn format(&self, _data: &Self::Data) -> Row {
+        Row::new(vec!(String::from(self)))
+    }
+}
+
+// fn trust_prompt( 
+// ) -> Prompt {
+//     Prompt::new(
+//         "Trust: ".into(),
+//         None,
+//         |editor: &Editor, input: &str| { vec!() },
+//         move |cx: &mut compositor::Context, input: &str, event: PromptEvent| { }
+//     )
+// }
+
+fn trust_workspace(
+    cx: &mut compositor::Context,
+    _args: &[Cow<str>],
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    let (_, doc) = current!(cx.editor);
+
+    // FIXME: scratch buffer
+    // let is_dir = path.is_dir().then_some(path).or_else(|| path.parent())
+    let current_dir = if let Some(path) = doc.path() {
+        let parent = None; // Some(path.parent().unwrap().to_path_buf());
+        path.is_dir().then_some(path).or(parent)
+    } else {
+        None
+    };
+    let path = current_dir.and_then(|_| current_dir.unwrap().parent());
+
+    // if !doc.is_trusted() {
+    //     // TODO: update config trusted dirs
+    //     // let directory = doc.path().unwrap().parent().unwrap();
+    //     // doc.trust();
+    //     // doc.workspace_status = Some(security::WorkspaceStatus::Trusted);
+    //     doc.set_workspace_status(Some(security::WorkspaceStatus::Trusted))
+    // }
+
+    // let status = doc.get_workspace_status();
+    // cx.editor.set_status(format!("{:?}", status));
+
+    // First option should cancel
+    let options = [
+        security::WorkspacePrompt::DontTrust,
+        security::WorkspacePrompt::Trust,
+        security::WorkspacePrompt::TrustParent,
+    ];
+    let commands = options
+        .iter()
+        // .map(|option| security::WorkspaceCommand {
+        //     option: option.clone(),
+        //     description: option.clone(),
+        // })
+        .filter(|option| *option != &security::WorkspacePrompt::TrustParent || path.is_some())
+        .map(|option| {
+            // if let Some(current_dir) = doc.path() {
+            //     if let Some(parent) = current_dir.parent() { }
+            // }
+            security::WorkspaceCommand::new(option, path.unwrap_or_else(|| Path::new("")))
+        })
+        .collect::<Vec<_>>();
+    let callback = async move {
+        let call: job::Callback = Callback::EditorCompositor(Box::new(
+            move |_editor: &mut Editor, compositor: &mut Compositor| {
+                let picker = ui::FilePicker::new(commands, (), |_cx, command, _action| {
+                    // execute_lsp_command(cx.editor, command.clone());
+                    command.execute()
+                }, |_editor, command| {
+                    let rope = Rope::from_str(&command.description);
+                    let file_location: ui::FileLocation = (rope.into(), None);
+                    Some(file_location)
+                });
+                compositor.push(Box::new(overlayed(picker)))
+            },
+        ));
+        Ok(call)
+    };
+    cx.jobs.callback(callback);
+
+    Ok(())
+}
+
 fn vsplit(
     cx: &mut compositor::Context,
     args: &[Cow<str>],
@@ -2355,7 +2446,14 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
             doc: "Display tree sitter scopes, primarily for theming and development.",
             fun: tree_sitter_scopes,
             completer: None,
-       },
+        },
+        TypableCommand {
+            name: "trust-workspace",
+            aliases: &[],
+            doc: "Display workspace trust prompt.",
+            fun: trust_workspace,
+            completer: None,
+        },
         TypableCommand {
             name: "debug-start",
             aliases: &["dbg"],

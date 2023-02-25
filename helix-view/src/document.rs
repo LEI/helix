@@ -4,6 +4,7 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
 use helix_core::doc_formatter::TextFormat;
+use helix_core::security::WorkspaceStatus;
 use helix_core::syntax::Highlight;
 use helix_core::text_annotations::TextAnnotations;
 use helix_core::Range;
@@ -150,6 +151,8 @@ pub struct Document {
     language_server: Option<Arc<helix_lsp::Client>>,
 
     diff_handle: Option<DiffHandle>,
+
+    pub workspace_status: Option<WorkspaceStatus>,
 }
 
 use std::{fmt, mem};
@@ -395,6 +398,7 @@ impl Document {
             modified_since_accessed: false,
             language_server: None,
             diff_handle: None,
+            workspace_status: None,
             config,
         }
     }
@@ -799,8 +803,10 @@ impl Document {
     }
 
     /// Initializes a new selection for the given view if it does not
-    /// already have one.
+    /// already have one and update workspace status.
     pub fn ensure_view_init(&mut self, view_id: ViewId) {
+        // TODO: elsewhere?
+        self.set_workspace_status(None);
         if self.selections.get(&view_id).is_none() {
             self.reset_selection(view_id);
         }
@@ -1176,6 +1182,64 @@ impl Document {
             .map(|path| path.to_string_lossy().to_string().into())
             .unwrap_or_else(|| SCRATCH_BUFFER_NAME.into())
     }
+
+
+    fn get_workspace_path(&self) -> String {
+        let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(""));
+
+        self.relative_path().unwrap_or_else(get_current_dir).into_os_string().into_string().unwrap()
+    }
+
+    fn check_file_status(&self) -> WorkspaceStatus {
+        let path = self.get_workspace_path();
+        let config = self.config.load();
+        let trusted = config.security.trusted.clone();
+
+        WorkspaceStatus::from(trusted.iter().any(|dir| path.starts_with(dir)))
+    }
+
+    fn set_workspace_status(&mut self, status_opt: Option<WorkspaceStatus>) -> Option<WorkspaceStatus> {
+        let config = self.config.load();
+        if !config.security.enable {
+            log::warn!("--- SECURITY DISABLED");
+            return None;
+        }
+        let status = status_opt.unwrap_or_else(|| self.check_file_status());
+        log::info!("--- SET WORKSPACE STATUS: {:?}", status);
+        self.workspace_status = Some(status);
+
+        self.workspace_status
+    }
+
+    pub fn get_workspace_status(&self) -> WorkspaceStatus {
+        if !self.config.load().security.enable {
+            return WorkspaceStatus::Trusted;
+        }
+
+        self.workspace_status.unwrap_or_default()
+    }
+
+    // Update and return trust status as a boolean
+    pub fn check_untrusted(&mut self) -> bool {
+        let trusted = self.set_workspace_status(None)
+            .map(|status| status.into())
+            .unwrap_or_else(|| !self.config.load().security.enable);
+        log::info!("{:?}: {:?}", trusted, self.path().unwrap_or(&PathBuf::from("")));
+
+        trusted
+    }
+
+    // Return trust status as a boolean
+    pub fn is_trusted(&self) -> bool {
+        self.get_workspace_status().into()
+    }
+
+    // pub fn trust<'a>(&'a self, editor: &'a Editor) {
+    //     let mut trusted = &editor.config().security.trusted;
+    //     // let mut trusted = crate::editor::SecurityConfig::default().trusted; // self.config().security.trusted;
+    //     let path = self.get_workspace_path();
+    //     trusted.push(path);
+    // }
 
     // transact(Fn) ?
 

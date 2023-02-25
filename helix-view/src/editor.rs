@@ -274,6 +274,7 @@ pub struct Config {
     /// Whether to color modes with different colors. Defaults to `false`.
     pub color_modes: bool,
     pub soft_wrap: SoftWrap,
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,7 +421,7 @@ impl Default for StatusLineConfig {
                 E::FileName,
                 E::FileModificationIndicator,
             ],
-            center: vec![],
+            center: vec![E::WorkspaceTrust],
             right: vec![E::Diagnostics, E::Selections, E::Position, E::FileEncoding],
             separator: String::from("│"),
             mode: ModeConfig::default(),
@@ -478,6 +479,9 @@ pub enum StatusLineElement {
 
     /// A summary of the number of errors and warnings on file and workspace
     WorkspaceDiagnostics,
+
+    /// The workspace trust status
+    WorkspaceTrust,
 
     /// The number of selections (cursors)
     Selections,
@@ -736,6 +740,23 @@ impl Default for IndentGuidesConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SecurityConfig {
+    pub enable: bool,
+    /// Trusted directories
+    pub trusted: Vec<String>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            trusted: vec![],
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -772,6 +793,7 @@ impl Default for Config {
             indent_guides: IndentGuidesConfig::default(),
             color_modes: false,
             soft_wrap: SoftWrap::default(),
+            security: SecurityConfig::default(),
         }
     }
 }
@@ -1120,6 +1142,12 @@ impl Editor {
 
         let doc = self.document_mut(doc_id)?;
         let doc_url = doc.url()?;
+
+        // only run in trusted mode
+        // TODO: allow some LSP features?
+        if !doc.check_untrusted() {
+            return None;
+        }
 
         if let Some(language_server) = language_server {
             // only spawn a new lang server if the servers aren't the same

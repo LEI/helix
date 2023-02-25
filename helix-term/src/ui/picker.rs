@@ -28,6 +28,7 @@ use helix_core::{
     movement::Direction, text_annotations::TextAnnotations,
     unicode::segmentation::UnicodeSegmentation, Position,
 };
+use helix_core::Rope;
 use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
@@ -46,6 +47,7 @@ pub const MAX_FILE_SIZE_FOR_PREVIEW: u64 = 10 * 1024 * 1024;
 pub enum PathOrId {
     Id(DocumentId),
     Path(PathBuf),
+    Text(Rope),
 }
 
 impl PathOrId {
@@ -54,6 +56,7 @@ impl PathOrId {
         Ok(match self {
             Path(path) => Path(helix_core::path::get_canonicalized_path(&path)?),
             Id(id) => Id(id),
+            Text(rope) => Text(rope),
         })
     }
 }
@@ -67,6 +70,12 @@ impl From<PathBuf> for PathOrId {
 impl From<DocumentId> for PathOrId {
     fn from(v: DocumentId) -> Self {
         Self::Id(v)
+    }
+}
+
+impl From<Rope> for PathOrId {
+    fn from(text: Rope) -> Self {
+        Self::Text(text)
     }
 }
 
@@ -97,6 +106,7 @@ pub enum CachedPreview {
 pub enum Preview<'picker, 'editor> {
     Cached(&'picker CachedPreview),
     EditorDocument(&'editor Document),
+    Text(Box<Document>),
 }
 
 impl Preview<'_, '_> {
@@ -104,6 +114,7 @@ impl Preview<'_, '_> {
         match self {
             Preview::EditorDocument(doc) => Some(doc),
             Preview::Cached(CachedPreview::Document(doc)) => Some(doc),
+            Preview::Text(doc) => Some(doc.as_ref()),
             _ => None,
         }
     }
@@ -118,6 +129,7 @@ impl Preview<'_, '_> {
                 CachedPreview::LargeFile => "<File too large to preview>",
                 CachedPreview::NotFound => "<File not found>",
             },
+            Self::Text(_) => "<Text>",
         }
     }
 }
@@ -204,6 +216,12 @@ impl<T: Item> FilePicker<T> {
                 let doc = editor.documents.get(&id).unwrap();
                 Preview::EditorDocument(doc)
             }
+            PathOrId::Text(rope) => {
+                use std::sync::Arc;
+                use arc_swap::ArcSwap;
+                let doc = Document::from(rope, None, Arc::new(ArcSwap::new(Arc::new(editor.config().clone()))));
+                Preview::Text(Box::new(doc))
+            }
         }
     }
 
@@ -217,6 +235,7 @@ impl<T: Item> FilePicker<T> {
                     Some(CachedPreview::Document(doc)) => Some(doc),
                     _ => None,
                 },
+                PathOrId::Text(_rope) => None,
             });
 
         // Then attempt to highlight it if it has no language set
