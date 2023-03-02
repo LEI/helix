@@ -280,6 +280,7 @@ impl MappableCommand {
         file_picker, "Open file picker",
         file_picker_in_current_buffer_directory, "Open file picker at current buffers's directory",
         file_picker_in_current_directory, "Open file picker at current working directory",
+        alternate_file, "Open alternative file (e.g. corresponding test)",
         code_action, "Perform code action",
         buffer_picker, "Open buffer picker",
         jumplist_picker, "Open jumplist picker",
@@ -2429,6 +2430,79 @@ fn file_picker_in_current_directory(cx: &mut Context) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("./"));
     let picker = ui::file_picker(cwd, &cx.editor.config());
     cx.push_layer(Box::new(overlayed(picker)));
+}
+
+// TODO: search spec/test/tests relative to project directory
+fn find_relative_projection(_path: &Path, _extension: &str) -> Option<PathBuf> {
+    None
+}
+// Look for a file with another extension
+fn find_projection(path: &Path, extension: &str) -> Option<PathBuf> {
+    let mut path_buf = path.to_path_buf();
+    path_buf.set_extension(extension);
+
+    match path_buf.exists() {
+        true => Some(path_buf),
+        false => find_relative_projection(path, extension),
+    }
+}
+// Look for a file with a prefixed extension
+fn find_projection_prefix(path: &Path, prefix: &str, extension: &str) -> Option<PathBuf> {
+    let extension = format!("{}.{}", prefix, extension);
+    let mut path_buf = path.to_path_buf();
+    path_buf.set_extension(&extension);
+
+    match path_buf.exists() {
+        true => Some(path_buf),
+        false => find_relative_projection(path, extension.as_str()),
+    }
+}
+// Search for an alternative file path
+fn find_alternate_file(path: &Path) -> Option<PathBuf> {
+    let extension = match path.extension() {
+        Some(extension) => extension,
+        None => return None,
+    };
+
+    // TODO: save matched file for toggling
+    match extension.to_str() {
+        Some("lock") => find_projection(path, "toml"),
+        Some("toml") => find_projection(path, "lock"),
+
+        Some(extension) => find_projection_prefix(path, "spec", extension)
+            .or_else(|| find_projection_prefix(path, "test", extension)),
+        None => None,
+    }
+}
+fn alternate_file(cx: &mut Context) {
+    let (_view, doc) = current!(cx.editor);
+
+    let path = match doc.path() {
+        Some(path) => path,
+        None => {
+            // Scratch buffer
+            cx.editor.set_error("No alternate file: empty path");
+            return;
+        }
+    };
+
+    let alternate_file = match find_alternate_file(path) {
+        Some(path) => path,
+        None => {
+            let msg = format!("No alternate file for: {:?}", &path);
+            cx.editor.set_error(msg);
+            return;
+        }
+    };
+
+    let action = Action::Replace; // TODO: action as param
+    if let Err(e) = cx.editor.open(&alternate_file, action) {
+        cx.editor
+            .set_error(format!("Open alternate file failed: {:?}", e));
+    }
+
+    let msg = format!("Loaded alternate file: {:?}", alternate_file);
+    cx.editor.set_status(msg);
 }
 
 fn buffer_picker(cx: &mut Context) {
