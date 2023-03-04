@@ -276,6 +276,25 @@ pub struct Config {
     /// Whether to color modes with different colors. Defaults to `false`.
     pub color_modes: bool,
     pub soft_wrap: SoftWrap,
+    pub security: SecurityConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SecurityConfig {
+    /// Enables workspace trust
+    pub enable: bool,
+    /// Trusted paths
+    pub trusted: Vec<String>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            trusted: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -738,6 +757,7 @@ impl Default for Config {
             color_modes: false,
             soft_wrap: SoftWrap::default(),
             text_width: 80,
+            security: SecurityConfig::default(),
         }
     }
 }

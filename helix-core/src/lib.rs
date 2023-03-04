@@ -20,6 +20,7 @@ pub mod path;
 mod position;
 pub mod register;
 pub mod search;
+pub mod security;
 pub mod selection;
 pub mod shellwords;
 pub mod surround;
