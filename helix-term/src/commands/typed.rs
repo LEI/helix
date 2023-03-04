@@ -1334,7 +1334,7 @@ fn lsp_restart(
         .language_config()
         .context("LSP not defined for the current document")?;
 
-    if doc.is_restricted() {
+    if !doc.is_trusted() {
         return Err(anyhow!("Current document is restricted, use :trust true"));
     }
 
@@ -1423,7 +1423,7 @@ fn tree_sitter_scopes(
     Ok(())
 }
 
-// FIXME: current working directory != current document path
+// Note: current working directory != current document path
 fn trust_document(
     cx: &mut compositor::Context,
     args: &[Cow<str>],
@@ -1437,14 +1437,15 @@ fn trust_document(
         // TODO: prompt user?
         let (_view, doc) = current!(cx.editor);
         let status = doc.get_trust_status();
-        cx.editor.set_status(format!("Current document is {}", status));
+        cx.editor
+            .set_status(format!("Current document is {}", status));
         return Ok(());
     } else if args.len() != 1 {
         anyhow::bail!("Bad arguments. Usage: `:trust-directory bool`");
     }
 
     let arg = &args[0];
-    let arg_error = |_| anyhow::anyhow!("Could not parse arg `{}`", arg);
+    let arg_error = |_| anyhow::anyhow!("Could not parse bool `{}`", arg);
 
     let value: bool = arg.parse().map_err(arg_error)?;
     let status: security::TrustStatus = value.into();
@@ -2448,7 +2449,7 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         TypableCommand {
             name: "trust-document",
             aliases: &["trust"],
-            doc: "Set the current document trust status (true = Trusted, false = Restricted).",
+            doc: "Set the trust status of the current document.",
             fun: trust_document,
             completer: Some(completers::setting),
         },

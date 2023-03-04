@@ -152,7 +152,8 @@ pub struct Document {
 
     diff_handle: Option<DiffHandle>,
 
-    trust_status: Option<TrustStatus>,
+    /// Security trust status
+    trust_status: TrustStatus,
 }
 
 use std::{fmt, mem};
@@ -399,7 +400,7 @@ impl Document {
             modified_since_accessed: false,
             language_server: None,
             diff_handle: None,
-            trust_status: None,
+            trust_status: TrustStatus::default(),
             config,
         }
     }
@@ -428,13 +429,8 @@ impl Document {
 
         let mut doc = Self::from(rope, Some(encoding), config);
 
-        // Set the path
+        // set the path and try detecting the language
         doc.set_path(Some(path))?;
-
-        // Workspace security check
-        doc.update_trust_status();
-
-        // Try detecting the language
         if let Some(loader) = config_loader {
             doc.detect_language(loader);
         }
@@ -1313,51 +1309,35 @@ impl Document {
         TextAnnotations::default()
     }
 
-    /// Checks and set current trust status
-    pub fn update_trust_status(&mut self) {
+    /// Checks and set the security trust status.
+    pub fn update_trust_status(&mut self) -> Option<TrustStatus> {
         let config = self.config.load();
         if !config.security.enable {
-            return;
+            return None;
         }
 
-        let path = match self.path() {
-            Some(path) => path,
-            None => return, // Not a scratch buffer?
+        let status = match self.path() {
+            Some(path) => config.security.clone().is_trusted_path(path).into(),
+            None => config.security.trust_scratch_buffer.into(),
         };
+        self.set_trust_status(status);
 
-        // Checks if the current document can be trusted
-        let status = config.security.clone().is_trusted_path(path).into();
-
-        self.set_trust_status(status)
+        Some(status)
     }
 
+    /// Set the current document security trust status.
     pub fn set_trust_status(&mut self, status: TrustStatus) {
-        let config = self.config.load();
-        if !config.security.enable {
-            return;
-        }
-
-        if self.get_trust_status() == status {
-            return;
-        }
-
-        self.trust_status = Some(status);
+        self.trust_status = status;
     }
 
+    /// Get the current document security trust status.
     pub fn get_trust_status(&self) -> TrustStatus {
-        if !self.config.load().security.enable {
-            return TrustStatus::Trusted;
-        }
-
-        self.trust_status.unwrap_or_default()
+        self.trust_status
     }
 
+    /// Get the current document security status as a boolean.
     pub fn is_trusted(&self) -> bool {
         self.get_trust_status().into()
-    }
-
-    pub fn is_restricted(&self) -> bool {
-        !self.is_trusted()
     }
 }
 

@@ -40,9 +40,9 @@ use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
 pub use helix_core::register::Registers;
+use helix_core::security::TrustStatus;
 use helix_core::{
     auto_pairs::AutoPairs,
-    security::TrustStatus,
     syntax::{self, AutoPairConfig, SoftWrap},
     Change,
 };
@@ -277,15 +277,18 @@ pub struct Config {
     /// Whether to color modes with different colors. Defaults to `false`.
     pub color_modes: bool,
     pub soft_wrap: SoftWrap,
+    /// Security configuration.
     pub security: SecurityConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SecurityConfig {
-    /// Enables workspace trust
+    /// Enables or disables document trust. Defaults to `true`.
     pub enable: bool,
-    /// Trusted paths
+    /// Trust scratch buffer. Defaults to `true`.
+    pub trust_scratch_buffer: bool,
+    /// List of trusted directories.
     pub trusted: Vec<String>,
 }
 
@@ -293,14 +296,16 @@ impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
             enable: true,
+            trust_scratch_buffer: true,
             trusted: vec![],
         }
     }
 }
 
 impl SecurityConfig {
+    /// Checks if a given path can be trusted.
     pub fn is_trusted_path(self, path: &Path) -> bool {
-        // Check exact path.parent() instead?
+        // TODO: compare path.parent() instead?
         self.trusted.iter().any(|dir| path.starts_with(dir))
     }
 }
@@ -492,7 +497,7 @@ pub enum StatusLineElement {
     /// A single space
     Spacer,
 
-    /// Security trust status
+    /// Document trust status.
     Trust,
 }
 
@@ -1088,9 +1093,9 @@ impl Editor {
         self._refresh();
     }
 
-    /// Refreshes the editor features when a document becomes trusted or restricted
+    /// Refreshes the editor features when a document becomes trusted or restricted.
     pub fn refresh_trust_status(&mut self, doc_id: DocumentId, status: TrustStatus) {
-        if status == TrustStatus::Trusted {
+        if status.into() {
             self.launch_language_server(doc_id);
         }
     }
@@ -1110,7 +1115,8 @@ impl Editor {
         let (lang, path) = {
             let doc = self.document(doc_id)?;
 
-            if doc.is_restricted() {
+            // Safety check in case this runs in a restricted workspace
+            if !doc.is_trusted() {
                 return None;
             }
 
@@ -1164,7 +1170,7 @@ impl Editor {
             let doc = doc_mut!(self, &view.doc);
             view.sync_changes(doc);
             view.gutters = config.gutters.clone();
-            view.ensure_cursor_in_view(doc, config.scrolloff)
+            view.ensure_cursor_in_view(doc, config.scrolloff);
         }
     }
 
@@ -1190,7 +1196,7 @@ impl Editor {
 
         self.enter_normal_mode();
 
-        match action {
+        let doc = match action {
             Action::Replace => {
                 let (view, doc) = current_ref!(self);
                 // If the current view is an empty scratch buffer and is not displayed in any other views, delete it.
@@ -1240,13 +1246,14 @@ impl Editor {
 
                 self.replace_document_in_view(view_id, id);
 
-                return;
+                None
             }
             Action::Load => {
                 let view_id = view!(self).id;
                 let doc = doc_mut!(self, &id);
                 doc.ensure_view_init(view_id);
-                return;
+
+                Some(doc)
             }
             Action::HorizontalSplit | Action::VerticalSplit => {
                 // copy the current view, unless there is no view yet
@@ -1267,7 +1274,14 @@ impl Editor {
                 // initialize selection for view
                 let doc = doc_mut!(self, &id);
                 doc.ensure_view_init(view_id);
+
+                Some(doc)
             }
+        };
+
+        if let Some(doc) = doc {
+            // Document security check
+            doc.update_trust_status();
         }
 
         self._refresh();

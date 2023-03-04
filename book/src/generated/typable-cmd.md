@@ -42,6 +42,7 @@
 | `:show-clipboard-provider` | Show clipboard provider name in status bar. |
 | `:change-current-directory`, `:cd` | Change the current working directory. |
 | `:show-directory`, `:pwd` | Show the current working directory. |
+| `:trust-document`, `:trust` | Set the trust status of the current document. |
 | `:encoding` | Set encoding. Based on `https://encoding.spec.whatwg.org`. |
 | `:character-info`, `:char` | Get info about the character under the primary cursor. |
 | `:reload` | Discard changes and reload from the source file. |

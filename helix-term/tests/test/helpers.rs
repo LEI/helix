@@ -9,6 +9,7 @@ use anyhow::bail;
 use crossterm::event::{Event, KeyEvent};
 use helix_core::{diagnostic::Severity, test, Selection, Transaction};
 use helix_term::{application::Application, args::Args, config::Config, keymap::merge_keys};
+use helix_view::editor::SecurityConfig;
 use helix_view::{doc, editor::LspConfig, input::parse_macro, Editor};
 use tempfile::NamedTempFile;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -214,6 +215,10 @@ pub fn test_config() -> Config {
     merge_keys(Config {
         editor: helix_view::editor::Config {
             lsp: LspConfig {
+                enable: false,
+                ..Default::default()
+            },
+            security: SecurityConfig {
                 enable: false,
                 ..Default::default()
             },
