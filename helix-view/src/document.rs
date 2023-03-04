@@ -428,8 +428,13 @@ impl Document {
 
         let mut doc = Self::from(rope, Some(encoding), config);
 
-        // set the path and try detecting the language
+        // Set the path
         doc.set_path(Some(path))?;
+
+        // Workspace security check
+        doc.update_trust_status();
+
+        // Try detecting the language
         if let Some(loader) = config_loader {
             doc.detect_language(loader);
         }
@@ -1308,22 +1313,40 @@ impl Document {
         TextAnnotations::default()
     }
 
-    // Check and set current file or directory trust status
+    /// Checks and set current trust status
     pub fn update_trust_status(&mut self) {
-        // TODO: fallback to current dir
-        let path = self.path().unwrap();
         let config = self.config.load();
-        let trusted = config.security.trusted.clone();
-        let is_trusted = trusted.iter().any(|dir| path.starts_with(dir));
+        if !config.security.enable {
+            return;
+        }
 
-        self.set_trust_status(is_trusted.into());
+        let path = match self.path() {
+            Some(path) => path,
+            None => return, // Not a scratch buffer?
+        };
+
+        let status = config.security.clone().is_trusted_path(path).into();
+        if self.get_trust_status() == status {
+            return;
+        }
+
+        log::info!("Updated security status to {:?}: {}", status, path.display());
+        self.set_trust_status(status);
     }
 
     pub fn set_trust_status(&mut self, status: TrustStatus) {
+        if !self.config.load().security.enable {
+            return;
+        }
+
         self.trust_status = Some(status);
     }
 
     pub fn get_trust_status(&self) -> TrustStatus {
+        if !self.config.load().security.enable {
+            return TrustStatus::Trusted;
+        }
+
         self.trust_status.unwrap_or_default()
     }
 }

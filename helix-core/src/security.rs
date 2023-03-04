@@ -1,15 +1,21 @@
 /// Workspace mode
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TrustStatus {
-    // Enable all features
+    /// Enable all features
     Trusted,
-    // Safe code browsing
+    /// Safe code browsing
     Restricted,
 }
 
 impl Default for TrustStatus {
     fn default() -> Self {
-        TrustStatus::Restricted
+        Self::Restricted
+    }
+}
+
+impl std::fmt::Display for TrustStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

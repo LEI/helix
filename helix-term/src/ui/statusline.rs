@@ -305,7 +305,7 @@ where
     if context.editor.config().security.enable {
         write(
             context,
-            format!("[{:?}]", context.doc.get_trust_status()),
+            format!("[{}]", context.doc.get_trust_status()),
             None,
         );
     }

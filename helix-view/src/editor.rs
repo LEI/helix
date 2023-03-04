@@ -297,6 +297,13 @@ impl Default for SecurityConfig {
     }
 }
 
+impl SecurityConfig {
+    pub fn is_trusted_path(self, path: &Path) -> bool {
+        // Check exact path.parent() instead?
+        self.trusted.iter().any(|dir| path.starts_with(dir))
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct TerminalConfig {
@@ -1308,8 +1315,11 @@ impl Editor {
                 doc.set_diff_base(diff_base, self.redraw_handle.clone());
             }
 
+            let is_trusted = doc.get_trust_status().into();
             let id = self.new_document(doc);
-            let _ = self.launch_language_server(id);
+            if is_trusted {
+                self.launch_language_server(id);
+            }
 
             id
         };
