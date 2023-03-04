@@ -4,6 +4,7 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
 use helix_core::doc_formatter::TextFormat;
+use helix_core::security::TrustStatus;
 use helix_core::syntax::Highlight;
 use helix_core::text_annotations::TextAnnotations;
 use helix_core::Range;
@@ -150,6 +151,8 @@ pub struct Document {
     language_server: Option<Arc<helix_lsp::Client>>,
 
     diff_handle: Option<DiffHandle>,
+
+    trust_status: Option<TrustStatus>,
 }
 
 use std::{fmt, mem};
@@ -173,6 +176,7 @@ impl fmt::Debug for Document {
             .field("modified_since_accessed", &self.modified_since_accessed)
             .field("diagnostics", &self.diagnostics)
             // .field("language_server", &self.language_server)
+            .field("trust_status", &self.trust_status)
             .finish()
     }
 }
@@ -395,6 +399,7 @@ impl Document {
             modified_since_accessed: false,
             language_server: None,
             diff_handle: None,
+            trust_status: None,
             config,
         }
     }
@@ -1301,6 +1306,25 @@ impl Document {
 
     pub fn text_annotations(&self, _theme: Option<&Theme>) -> TextAnnotations {
         TextAnnotations::default()
+    }
+
+    // Check and set current file or directory trust status
+    pub fn update_trust_status(&mut self) {
+        // TODO: fallback to current dir
+        let path = self.path().unwrap();
+        let config = self.config.load();
+        let trusted = config.security.trusted.clone();
+        let is_trusted = trusted.iter().any(|dir| path.starts_with(dir));
+
+        self.set_trust_status(is_trusted.into());
+    }
+
+    pub fn set_trust_status(&mut self, status: TrustStatus) {
+        self.trust_status = Some(status);
+    }
+
+    pub fn get_trust_status(&self) -> TrustStatus {
+        self.trust_status.unwrap_or_default()
     }
 }
 

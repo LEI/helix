@@ -404,7 +404,7 @@ impl Default for StatusLineConfig {
                 E::FileName,
                 E::FileModificationIndicator,
             ],
-            center: vec![],
+            center: vec![E::TrustStatus],
             right: vec![E::Diagnostics, E::Selections, E::Position, E::FileEncoding],
             separator: String::from("│"),
             mode: ModeConfig::default(),
@@ -483,6 +483,9 @@ pub enum StatusLineElement {
 
     /// A single space
     Spacer,
+
+    /// Security trust status
+    TrustStatus,
 }
 
 // Cursor shape is read and used on every rendered frame and so needs

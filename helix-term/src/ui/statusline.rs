@@ -150,6 +150,7 @@ where
         helix_view::editor::StatusLineElement::FileType => render_file_type,
         helix_view::editor::StatusLineElement::Diagnostics => render_diagnostics,
         helix_view::editor::StatusLineElement::WorkspaceDiagnostics => render_workspace_diagnostics,
+        helix_view::editor::StatusLineElement::TrustStatus => render_trust_status,
         helix_view::editor::StatusLineElement::Selections => render_selections,
         helix_view::editor::StatusLineElement::PrimarySelectionLength => {
             render_primary_selection_length
@@ -294,6 +295,19 @@ where
             Some(context.editor.theme.get("error")),
         );
         write(context, format!(" {} ", errors), None);
+    }
+}
+
+fn render_trust_status<F>(context: &mut RenderContext, write: F)
+where
+    F: Fn(&mut RenderContext, String, Option<Style>) + Copy,
+{
+    if context.editor.config().security.enable {
+        write(
+            context,
+            format!("[{:?}]", context.doc.get_trust_status()),
+            None,
+        );
     }
 }
 

@@ -1,5 +1,5 @@
 /// Workspace mode
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TrustStatus {
     // Enable all features
     Trusted,
@@ -16,8 +16,17 @@ impl Default for TrustStatus {
 impl From<bool> for TrustStatus {
     fn from(is_trusted: bool) -> Self {
         match is_trusted {
-            true => TrustStatus::Trusted,
-            false => TrustStatus::Restricted,
+            true => Self::Trusted,
+            false => Self::Restricted,
+        }
+    }
+}
+
+impl From<TrustStatus> for bool {
+    fn from(status: TrustStatus) -> bool {
+        match status {
+            TrustStatus::Trusted => true,
+            TrustStatus::Restricted => false,
         }
     }
 }
