@@ -42,6 +42,7 @@ pub use helix_core::diagnostic::Severity;
 pub use helix_core::register::Registers;
 use helix_core::{
     auto_pairs::AutoPairs,
+    security::TrustStatus,
     syntax::{self, AutoPairConfig, SoftWrap},
     Change,
 };
@@ -411,7 +412,7 @@ impl Default for StatusLineConfig {
                 E::FileName,
                 E::FileModificationIndicator,
             ],
-            center: vec![E::TrustStatus],
+            center: vec![E::Trust],
             right: vec![E::Diagnostics, E::Selections, E::Position, E::FileEncoding],
             separator: String::from("│"),
             mode: ModeConfig::default(),
@@ -492,7 +493,7 @@ pub enum StatusLineElement {
     Spacer,
 
     /// Security trust status
-    TrustStatus,
+    Trust,
 }
 
 // Cursor shape is read and used on every rendered frame and so needs
@@ -1087,6 +1088,13 @@ impl Editor {
         self._refresh();
     }
 
+    /// Refreshes the editor features when a document becomes trusted or restricted
+    pub fn refresh_trust_status(&mut self, doc_id: DocumentId, status: TrustStatus) {
+        if status == TrustStatus::Trusted {
+            self.launch_language_server(doc_id);
+        }
+    }
+
     /// Refreshes the language server for a given document
     pub fn refresh_language_server(&mut self, doc_id: DocumentId) -> Option<()> {
         self.launch_language_server(doc_id)
@@ -1101,6 +1109,11 @@ impl Editor {
         // if doc doesn't have a URL it's a scratch buffer, ignore it
         let (lang, path) = {
             let doc = self.document(doc_id)?;
+
+            if doc.is_restricted() {
+                return None;
+            }
+
             (doc.language.clone(), doc.path().cloned())
         };
 
@@ -1315,11 +1328,8 @@ impl Editor {
                 doc.set_diff_base(diff_base, self.redraw_handle.clone());
             }
 
-            let is_trusted = doc.get_trust_status().into();
             let id = self.new_document(doc);
-            if is_trusted {
-                self.launch_language_server(id);
-            }
+            let _ = self.launch_language_server(id);
 
             id
         };

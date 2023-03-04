@@ -5,7 +5,7 @@ use crate::job::Job;
 
 use super::*;
 
-use helix_core::encoding;
+use helix_core::{encoding, security};
 use helix_view::document::DEFAULT_LANGUAGE_NAME;
 use helix_view::editor::{Action, CloseError, ConfigEvent};
 use serde_json::Value;
@@ -1334,6 +1334,10 @@ fn lsp_restart(
         .language_config()
         .context("LSP not defined for the current document")?;
 
+    if doc.is_restricted() {
+        return Err(anyhow!("Current document is restricted, use :trust true"));
+    }
+
     let scope = config.scope.clone();
     cx.editor.language_servers.restart(config, doc.path())?;
 
@@ -1341,6 +1345,7 @@ fn lsp_restart(
     let document_ids_to_refresh: Vec<DocumentId> = cx
         .editor
         .documents()
+        .filter(|doc| doc.is_trusted())
         .filter_map(|doc| match doc.language_config() {
             Some(config) if config.scope.eq(&scope) => Some(doc.id()),
             _ => None,
@@ -1414,6 +1419,41 @@ fn tree_sitter_scopes(
     };
 
     cx.jobs.callback(callback);
+
+    Ok(())
+}
+
+// FIXME: current working directory != current document path
+fn trust_document(
+    cx: &mut compositor::Context,
+    args: &[Cow<str>],
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    if args.is_empty() {
+        // TODO: prompt user?
+        let (_view, doc) = current!(cx.editor);
+        let status = doc.get_trust_status();
+        cx.editor.set_status(format!("Current document is {}", status));
+        return Ok(());
+    } else if args.len() != 1 {
+        anyhow::bail!("Bad arguments. Usage: `:trust-directory bool`");
+    }
+
+    let arg = &args[0];
+    let arg_error = |_| anyhow::anyhow!("Could not parse arg `{}`", arg);
+
+    let value: bool = arg.parse().map_err(arg_error)?;
+    let status: security::TrustStatus = value.into();
+
+    let (_view, doc) = current!(cx.editor);
+    doc.set_trust_status(status);
+
+    let id = doc.id();
+    cx.editor.refresh_trust_status(id, status);
 
     Ok(())
 }
@@ -2404,6 +2444,13 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
             doc: "Show the current working directory.",
             fun: show_current_directory,
             completer: None,
+        },
+        TypableCommand {
+            name: "trust-document",
+            aliases: &["trust"],
+            doc: "Set the current document trust status (true = Trusted, false = Restricted).",
+            fun: trust_document,
+            completer: Some(completers::setting),
         },
         TypableCommand {
             name: "encoding",

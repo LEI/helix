@@ -7,6 +7,9 @@ pub enum TrustStatus {
     Restricted,
 }
 
+const TRUSTED: bool = true;
+const RESTRICTED: bool = false;
+
 impl Default for TrustStatus {
     fn default() -> Self {
         Self::Restricted
@@ -22,8 +25,8 @@ impl std::fmt::Display for TrustStatus {
 impl From<bool> for TrustStatus {
     fn from(is_trusted: bool) -> Self {
         match is_trusted {
-            true => Self::Trusted,
-            false => Self::Restricted,
+            TRUSTED => Self::Trusted,
+            RESTRICTED => Self::Restricted,
         }
     }
 }
@@ -31,8 +34,8 @@ impl From<bool> for TrustStatus {
 impl From<TrustStatus> for bool {
     fn from(status: TrustStatus) -> bool {
         match status {
-            TrustStatus::Trusted => true,
-            TrustStatus::Restricted => false,
+            TrustStatus::Trusted => TRUSTED,
+            TrustStatus::Restricted => RESTRICTED,
         }
     }
 }

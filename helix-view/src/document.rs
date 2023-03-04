@@ -1325,17 +1325,19 @@ impl Document {
             None => return, // Not a scratch buffer?
         };
 
+        // Checks if the current document can be trusted
         let status = config.security.clone().is_trusted_path(path).into();
-        if self.get_trust_status() == status {
-            return;
-        }
 
-        log::info!("Updated security status to {:?}: {}", status, path.display());
-        self.set_trust_status(status);
+        self.set_trust_status(status)
     }
 
     pub fn set_trust_status(&mut self, status: TrustStatus) {
-        if !self.config.load().security.enable {
+        let config = self.config.load();
+        if !config.security.enable {
+            return;
+        }
+
+        if self.get_trust_status() == status {
             return;
         }
 
@@ -1348,6 +1350,14 @@ impl Document {
         }
 
         self.trust_status.unwrap_or_default()
+    }
+
+    pub fn is_trusted(&self) -> bool {
+        self.get_trust_status().into()
+    }
+
+    pub fn is_restricted(&self) -> bool {
+        !self.is_trusted()
     }
 }
 
