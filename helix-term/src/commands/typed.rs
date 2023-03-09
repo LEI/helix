@@ -1345,6 +1345,7 @@ fn lsp_restart(
     let document_ids_to_refresh: Vec<DocumentId> = cx
         .editor
         .documents()
+        // Exclude restricted documents
         .filter(|doc| doc.is_trusted())
         .filter_map(|doc| match doc.language_config() {
             Some(config) if config.scope.eq(&scope) => Some(doc.id()),
@@ -1435,7 +1436,7 @@ fn trust_document(
 
     if args.is_empty() {
         // TODO: prompt user?
-        let (_view, doc) = current!(cx.editor);
+        let doc = doc!(cx.editor);
         let status = doc.get_trust_status();
         cx.editor
             .set_status(format!("Current document is {}", status));
@@ -1453,8 +1454,13 @@ fn trust_document(
     let (_view, doc) = current!(cx.editor);
     doc.set_trust_status(status);
 
-    let id = doc.id();
-    cx.editor.refresh_trust_status(id, status);
+    // TODO: cx.editor.config().security.trusted.push(path.clone());
+
+    // Refresh the editor only if a trust status is set
+    if doc.has_some_trust_status() {
+        let id = doc.id();
+        cx.editor.refresh_trust_status(id, status);
+    }
 
     Ok(())
 }

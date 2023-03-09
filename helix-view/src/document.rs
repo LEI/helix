@@ -4,7 +4,7 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
 use helix_core::doc_formatter::TextFormat;
-use helix_core::security::TrustStatus;
+use helix_core::security::{TrustStatus, TrustedPaths};
 use helix_core::syntax::Highlight;
 use helix_core::text_annotations::TextAnnotations;
 use helix_core::Range;
@@ -152,8 +152,9 @@ pub struct Document {
 
     diff_handle: Option<DiffHandle>,
 
-    /// Security trust status
-    trust_status: TrustStatus,
+    /// Security trust status of the document.
+    // None means unset: security disabled or newly loaded document
+    trust_status: Option<TrustStatus>,
 }
 
 use std::{fmt, mem};
@@ -400,7 +401,7 @@ impl Document {
             modified_since_accessed: false,
             language_server: None,
             diff_handle: None,
-            trust_status: TrustStatus::default(),
+            trust_status: None, // TrustStatus::default(),
             config,
         }
     }
@@ -1310,14 +1311,15 @@ impl Document {
     }
 
     /// Checks and set the security trust status.
-    pub fn update_trust_status(&mut self) -> Option<TrustStatus> {
+    pub fn update_trust_status(&mut self, trusted_paths: &TrustedPaths) -> Option<TrustStatus> {
         let config = self.config.load();
         if !config.security.enable {
             return None;
         }
 
+        // Checks if a given path can be trusted
         let status = match self.path() {
-            Some(path) => config.security.clone().is_trusted_path(path).into(),
+            Some(path) => trusted_paths.iter().any(|dir| path.starts_with(dir)).into(),
             None => config.security.trust_scratch_buffer.into(),
         };
         self.set_trust_status(status);
@@ -1327,12 +1329,25 @@ impl Document {
 
     /// Set the current document security trust status.
     pub fn set_trust_status(&mut self, status: TrustStatus) {
-        self.trust_status = status;
+        if !self.config.load().security.enable {
+            return;
+        }
+
+        self.trust_status = Some(status);
     }
 
     /// Get the current document security trust status.
     pub fn get_trust_status(&self) -> TrustStatus {
-        self.trust_status
+        if !self.config.load().security.enable {
+            return TrustStatus::Trusted;
+        }
+
+        self.trust_status.unwrap_or_default()
+    }
+
+    // pub trust_status?
+    pub fn has_some_trust_status(&self) -> bool {
+        self.trust_status.is_some()
     }
 
     /// Get the current document security status as a boolean.

@@ -1,4 +1,5 @@
-//! This modules provides a simple enum type to represent the trust status of a document.
+//! This module provides a simple enum type to represent the trust status of a document
+//! and a struct to maintain a list of trusted paths in memory.
 //! The security feature ensures no unauthorized code execution can take place.
 //! without an explicit activation by the user.
 //!
@@ -14,6 +15,8 @@
 // - enable some LSP features, maybe restict debugging?
 // - persist user choices over restarts (update config.toml?)
 
+use std::path::PathBuf;
+
 /// Trust status, also known as workspace mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TrustStatus {
@@ -22,6 +25,8 @@ pub enum TrustStatus {
     /// Safe code browsing, equivalent to `false`.
     Restricted,
 }
+
+pub type TrustedPaths = Vec<PathBuf>;
 
 impl Default for TrustStatus {
     fn default() -> Self {

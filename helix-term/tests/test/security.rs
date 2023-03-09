@@ -24,7 +24,7 @@ async fn scratch_buffer_trusted() -> anyhow::Result<()> {
         None,
         Some(&|app| {
             let doc = doc!(app.editor);
-            assert!(doc.is_trusted());
+            assert!(doc.is_trusted(), "scratch buffer trusted by default");
         }),
         false,
     )
@@ -46,7 +46,7 @@ async fn scratch_buffer_restricted() -> anyhow::Result<()> {
         None,
         Some(&|app| {
             let doc = doc!(app.editor);
-            assert!(!doc.is_trusted());
+            assert!(!doc.is_trusted(), "scratch buffer restricted by config");
         }),
         false,
     )
@@ -55,7 +55,6 @@ async fn scratch_buffer_restricted() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Document should be restricted by default
 #[tokio::test(flavor = "multi_thread")]
 async fn document_enable_trust() -> anyhow::Result<()> {
     let file = helpers::new_readonly_tempfile()?;
@@ -74,14 +73,14 @@ async fn document_enable_trust() -> anyhow::Result<()> {
                 None,
                 Some(&|app| {
                     let doc = doc!(app.editor);
-                    assert!(!doc.is_trusted());
+                    assert!(!doc.is_trusted(), "document restricted on open");
                 }),
             ),
             (
                 Some(":trust true<ret>"),
                 Some(&|app| {
                     let doc = doc!(app.editor);
-                    assert!(doc.is_trusted());
+                    assert!(doc.is_trusted(), "command should enable trust");
                 }),
             ),
         ],
@@ -95,7 +94,7 @@ async fn document_enable_trust() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn document_disable_trust() -> anyhow::Result<()> {
     let file = helpers::new_readonly_tempfile()?;
-    let directory = format!("{}", file.path().parent().unwrap().display());
+    let directory = file.path().parent().unwrap().to_path_buf();
     let config = security_test_config(SecurityConfig {
         trusted: vec![directory],
         ..Default::default()
@@ -112,14 +111,14 @@ async fn document_disable_trust() -> anyhow::Result<()> {
                 None,
                 Some(&|app| {
                     let doc = doc!(app.editor);
-                    assert!(doc.is_trusted());
+                    assert!(doc.is_trusted(), "document trusted on open");
                 }),
             ),
             (
                 Some(":trust false<ret>"),
                 Some(&|app| {
                     let doc = doc!(app.editor);
-                    assert!(!doc.is_trusted());
+                    assert!(!doc.is_trusted(), "command should disable trust");
                 }),
             ),
         ],

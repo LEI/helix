@@ -40,7 +40,7 @@ use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
 pub use helix_core::register::Registers;
-use helix_core::security::TrustStatus;
+use helix_core::security::{TrustStatus, TrustedPaths};
 use helix_core::{
     auto_pairs::AutoPairs,
     syntax::{self, AutoPairConfig, SoftWrap},
@@ -288,8 +288,8 @@ pub struct SecurityConfig {
     pub enable: bool,
     /// Trust scratch buffer. Defaults to `true`.
     pub trust_scratch_buffer: bool,
-    /// List of trusted directories.
-    pub trusted: Vec<String>,
+    /// List of trusted files? or directories.
+    pub trusted: TrustedPaths,
 }
 
 impl Default for SecurityConfig {
@@ -299,14 +299,6 @@ impl Default for SecurityConfig {
             trust_scratch_buffer: true,
             trusted: vec![],
         }
-    }
-}
-
-impl SecurityConfig {
-    /// Checks if a given path can be trusted.
-    pub fn is_trusted_path(self, path: &Path) -> bool {
-        // TODO: compare path.parent() instead?
-        self.trusted.iter().any(|dir| path.starts_with(dir))
     }
 }
 
@@ -497,7 +489,7 @@ pub enum StatusLineElement {
     /// A single space
     Spacer,
 
-    /// Document trust status.
+    /// The current document trust status.
     Trust,
 }
 
@@ -820,6 +812,7 @@ pub struct Editor {
     pub tree: Tree,
     pub next_document_id: DocumentId,
     pub documents: BTreeMap<DocumentId, Document>,
+    pub trusted_paths: TrustedPaths,
 
     // We Flatten<> to resolve the inner DocumentSavedEventFuture. For that we need a stream of streams, hence the Once<>.
     // https://stackoverflow.com/a/66875668
@@ -954,6 +947,7 @@ impl Editor {
             tree: Tree::new(area),
             next_document_id: DocumentId::default(),
             documents: BTreeMap::new(),
+            trusted_paths: conf.security.trusted.clone(),
             saves: HashMap::new(),
             save_queue: SelectAll::new(),
             write_count: 0,
@@ -1196,7 +1190,7 @@ impl Editor {
 
         self.enter_normal_mode();
 
-        let doc = match action {
+        match action {
             Action::Replace => {
                 let (view, doc) = current_ref!(self);
                 // If the current view is an empty scratch buffer and is not displayed in any other views, delete it.
@@ -1245,15 +1239,13 @@ impl Editor {
                 }
 
                 self.replace_document_in_view(view_id, id);
-
-                None
             }
             Action::Load => {
                 let view_id = view!(self).id;
                 let doc = doc_mut!(self, &id);
                 doc.ensure_view_init(view_id);
 
-                Some(doc)
+                self.check_trust(id);
             }
             Action::HorizontalSplit | Action::VerticalSplit => {
                 // copy the current view, unless there is no view yet
@@ -1275,13 +1267,12 @@ impl Editor {
                 let doc = doc_mut!(self, &id);
                 doc.ensure_view_init(view_id);
 
-                Some(doc)
+                // HACK: handles scratch buffer without loosing trust status
+                // on split for manually trusted/restricted files
+                if doc.path().is_none() {
+                    self.check_trust(id);
+                }
             }
-        };
-
-        if let Some(doc) = doc {
-            // Document security check
-            doc.update_trust_status();
         }
 
         self._refresh();
@@ -1343,13 +1334,35 @@ impl Editor {
             }
 
             let id = self.new_document(doc);
-            let _ = self.launch_language_server(id);
+            if self.check_trust(id) {
+                let _ = self.launch_language_server(id);
+            }
 
             id
         };
 
         self.switch(id, action);
         Ok(id)
+    }
+
+    // Document security check
+    pub fn check_trust(&mut self, doc_id: DocumentId) -> bool {
+        if !self.config().security.enable {
+            return true;
+        }
+
+        let doc = match self.documents.get_mut(&doc_id) {
+            Some(doc) => doc,
+            None => {
+                log::warn!("NO DOC {:?}", doc_id);
+                return self.config().security.trust_scratch_buffer;
+            }
+        };
+
+        let status = doc.update_trust_status(&self.trusted_paths);
+        log::warn!("Security {:?} = {:?}", doc.path(), status);
+
+        status.unwrap_or_default().into()
     }
 
     pub fn close(&mut self, id: ViewId) {
